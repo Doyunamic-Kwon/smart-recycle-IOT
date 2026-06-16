@@ -33,9 +33,11 @@ TRUSTED_THRESHOLD = 0.65
 
 
 def get_latest_image_b64() -> str | None:
-    """현재 디렉터리의 가장 최근 waste_*.jpg 를 base64로 반환."""
+    """현재 디렉터리의 가장 최근 waste_*.jpg 를 base64로 반환.
+    smart_recycle.py 가 print 후 imwrite 하므로 0.3초 대기 후 읽음."""
     import base64
     import glob as _glob
+    time.sleep(0.3)  # imwrite 완료 보장
     files = sorted(_glob.glob("waste_*.jpg"))
     if not files:
         return None
