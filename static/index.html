@@ -212,6 +212,31 @@
     </div>
   </div>
 
+  <!-- 오염 경고 -->
+  <div id="contam-alert" style="display:none; margin-bottom:1rem;">
+    <div class="card" style="border-color:#ef4444;">
+      <div style="display:flex; align-items:flex-start; gap:1.25rem; flex-wrap:wrap;">
+        <div style="flex:1; min-width:200px;">
+          <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem;">
+            <span style="font-size:1.25rem;">⚠️</span>
+            <h2 style="color:#ef4444; font-size:0.95rem; font-weight:700; text-transform:none; letter-spacing:0;">
+              오염률 경고 — 오분류/오염 비율이 70%를 초과했습니다
+            </h2>
+          </div>
+          <p style="font-size:0.82rem; color:var(--muted); line-height:1.6;">
+            잘못된 쓰레기가 다량 투입되고 있습니다.<br>
+            수거함 상태를 확인하거나 분류 안내를 강화하세요.
+          </p>
+        </div>
+        <div id="contam-img-wrap" style="display:none; flex-shrink:0;">
+          <p style="font-size:0.72rem; color:var(--muted); margin-bottom:0.4rem;">마지막 인식 장면</p>
+          <img id="contam-img" src="" alt="마지막 인식 장면"
+            style="width:240px; height:160px; object-fit:cover; border-radius:8px; border:1px solid #ef4444;" />
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Charts -->
   <div class="charts-grid">
     <!-- Category distribution -->
@@ -315,6 +340,8 @@ function updateKPIs(stats) {
   document.getElementById('kpi-contam-sub').textContent =
     `오분류 ${stats.misclassified ?? 0} + 불확실 ${stats.uncertain ?? 0}건`;
 
+  updateContamAlert(contam);
+
   if (stats.last) {
     document.getElementById('kpi-last').textContent = KO[stats.last.name] || stats.last.name;
     const t = new Date(stats.last.ts);
@@ -403,6 +430,29 @@ function updateEventsTable(events) {
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
+}
+
+function updateContamAlert(contam) {
+  const alert = document.getElementById('contam-alert');
+  if (contam >= 0.7) {
+    alert.style.display = 'block';
+    const imgWrap = document.getElementById('contam-img-wrap');
+    const img = document.getElementById('contam-img');
+    // 캐시 방지용 타임스탬프 쿼리 붙여서 항상 최신 이미지 로드
+    const src = `/static/captures/latest.jpg?t=${Date.now()}`;
+    fetch(src, { method: 'HEAD' })
+      .then(r => {
+        if (r.ok) {
+          img.src = src;
+          imgWrap.style.display = 'block';
+        } else {
+          imgWrap.style.display = 'none';
+        }
+      })
+      .catch(() => { imgWrap.style.display = 'none'; });
+  } else {
+    alert.style.display = 'none';
+  }
 }
 
 // 5초마다 자동 갱신

@@ -32,6 +32,20 @@ CLASS_IDS = {"plastic": 0, "can": 1, "glass": 2, "paper": 3}
 TRUSTED_THRESHOLD = 0.65
 
 
+def get_latest_image_b64() -> str | None:
+    """현재 디렉터리의 가장 최근 waste_*.jpg 를 base64로 반환."""
+    import base64
+    import glob as _glob
+    files = sorted(_glob.glob("waste_*.jpg"))
+    if not files:
+        return None
+    try:
+        with open(files[-1], "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except Exception:
+        return None
+
+
 def send_event(url: str, name: str, conf: float, region: str) -> bool:
     cls_id = CLASS_IDS.get(name, -1)
     band = "trusted" if conf >= TRUSTED_THRESHOLD else "uncertain"
@@ -45,9 +59,10 @@ def send_event(url: str, name: str, conf: float, region: str) -> bool:
         "uncertain": band == "uncertain",
         "flickered": False,
         "ts": datetime.now().isoformat(timespec="seconds"),
+        "image_b64": get_latest_image_b64(),
     }
     try:
-        r = requests.post(url, json=payload, timeout=5)
+        r = requests.post(url, json=payload, timeout=10)
         r.raise_for_status()
         return True
     except requests.exceptions.ConnectionError:

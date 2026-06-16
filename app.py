@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import base64
 import os
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +29,10 @@ PORT = int(os.environ.get("PORT", 8000))
 app = Flask(__name__, static_folder="static")
 CORS(app)
 db = EventDB(DB_PATH)
+
+CAPTURES_DIR = Path("static/captures")
+CAPTURES_DIR.mkdir(parents=True, exist_ok=True)
+LATEST_IMG = CAPTURES_DIR / "latest.jpg"
 
 REQUIRED = ["name", "cls_id", "conf"]
 
@@ -66,6 +71,13 @@ def post_event():
         flickered=bool(data.get("flickered", False)),
         ts=ts,
     )
+
+    if img_b64 := data.get("image_b64"):
+        try:
+            LATEST_IMG.write_bytes(base64.b64decode(img_b64))
+        except Exception:
+            pass
+
     return jsonify({"status": "ok"}), 201
 
 
