@@ -21,6 +21,7 @@ from .analytics.database import EventDB
 from .analytics.remote_logger import RemoteLogger
 from .config import Config
 from .detector import YoloDetector
+from .lcd import LCD, to_display_label
 from .tracker import CentroidTracker
 
 # severity → BGR 색상
@@ -111,6 +112,7 @@ def main():
                         )
                         db.log(**event, ts=ts)
                         remote.send(**event, ts=ts)
+                        print(f"detected: {to_display_label(track.name)} (conf: {track.conf:.2f})")
                         if sig.severity != "ok":
                             print(f"  · {sig.message}")
 
