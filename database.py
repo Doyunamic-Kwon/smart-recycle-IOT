@@ -126,19 +126,21 @@ class EventDB:
             contam_row = c.execute(
                 f"""SELECT
                     SUM(misclassified) AS mis,
-                    SUM(uncertain)     AS unc
+                    SUM(uncertain)     AS unc,
+                    SUM(CASE WHEN misclassified=1 OR uncertain=1 THEN 1 ELSE 0 END) AS contam_count
                     FROM events {where}""",
                 args,
             ).fetchone()
             mis = int(contam_row["mis"] or 0)
             unc = int(contam_row["unc"] or 0)
+            contam_count = int(contam_row["contam_count"] or 0)
 
             regions_rows = c.execute(
                 "SELECT DISTINCT region FROM events WHERE region IS NOT NULL ORDER BY region"
             ).fetchall()
             regions = [r["region"] for r in regions_rows]
 
-        contam_rate = round((mis + unc) / total, 4) if total else 0.0
+        contam_rate = round(contam_count / total, 4) if total else 0.0
         accuracy = round(1 - mis / total, 4) if total else 0.0
 
         return {
