@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import base64
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -25,10 +26,14 @@ from database import EventDB
 
 DB_PATH = os.environ.get("DB_PATH", "data/events.db")
 PORT = int(os.environ.get("PORT", 8000))
+HEARTBEAT_TIMEOUT = 60  # 이 시간(초) 동안 heartbeat 없으면 오프라인
 
 app = Flask(__name__, static_folder="static")
 CORS(app)
 db = EventDB(DB_PATH)
+
+# region → 마지막 heartbeat 시각 (메모리 저장, 재시작 시 초기화)
+_heartbeats: dict[str, float] = {}
 
 CAPTURES_DIR = Path("static/captures")
 CAPTURES_DIR.mkdir(parents=True, exist_ok=True)
@@ -92,6 +97,28 @@ def get_events():
 def get_stats():
     region = request.args.get("region") or None
     return jsonify(db.stats(region=region))
+
+
+@app.post("/api/heartbeat")
+def post_heartbeat():
+    data = request.get_json(silent=True) or {}
+    region = str(data.get("region", "unknown"))
+    _heartbeats[region] = time.time()
+    return jsonify({"status": "ok"}), 200
+
+
+@app.get("/api/heartbeat")
+def get_heartbeat():
+    now = time.time()
+    status = {
+        region: {
+            "online": (now - ts) < HEARTBEAT_TIMEOUT,
+            "seconds_ago": int(now - ts),
+            "last_seen": datetime.fromtimestamp(ts).isoformat(timespec="seconds"),
+        }
+        for region, ts in _heartbeats.items()
+    }
+    return jsonify(status)
 
 
 @app.get("/api/health")

@@ -170,6 +170,7 @@
     <select id="region-filter" onchange="onRegionChange()">
       <option value="">전체 지역</option>
     </select>
+    <div id="pi-status-bar" style="display:flex;gap:0.5rem;align-items:center;font-size:0.78rem;color:var(--muted);"></div>
     <div id="status-bar">
       <div id="dot"></div>
       <span id="status-text">연결 중...</span>
@@ -302,6 +303,20 @@ async function fetchJSON(url) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(r.statusText);
   return r.json();
+}
+
+async function refreshPiStatus() {
+  try {
+    const hb = await fetchJSON('/api/heartbeat');
+    const bar = document.getElementById('pi-status-bar');
+    const entries = Object.entries(hb);
+    if (!entries.length) { bar.innerHTML = ''; return; }
+    bar.innerHTML = entries.map(([region, s]) => `
+      <span style="display:flex;align-items:center;gap:4px;">
+        <span style="width:7px;height:7px;border-radius:50%;background:${s.online ? '#22c55e' : '#ef4444'};display:inline-block;"></span>
+        <span>${region} ${s.online ? `(${s.seconds_ago}s 전)` : '오프라인'}</span>
+      </span>`).join('<span style="color:var(--border);">|</span>');
+  } catch (_) {}
 }
 
 async function refresh() {
@@ -522,7 +537,9 @@ function updateContamAlert(contam) {
 
 // 5초마다 자동 갱신
 refresh();
+refreshPiStatus();
 setInterval(refresh, 5000);
+setInterval(refreshPiStatus, 10000);
 </script>
 </body>
 </html>
