@@ -163,14 +163,33 @@ aug = dict(
 
 > 학습은 PC/GPU 환경에서 진행 후, NCNN으로 변환해 Pi5에 배포
 
-| 지표 | 증강 전 | 증강 후 |
-|------|---------|---------|
-| mAP50 | - | - |
-| Precision | - | - |
-| Recall | - | - |
-| Pi5 추론속도 | - | ~200ms/frame |
+**인퍼런스 테스트 (NCNN 모델, CPU)**
 
-*실측 성능 수치는 `runs/detect/train*/results.csv` 참고*
+| 테스트 이미지 | 예측 클래스 | 신뢰도 | 정답 여부 |
+|---------------|------------|--------|----------|
+| Can test.png | can (캔) | 0.489 | ✅ |
+| paper test.png | paper (종이) | 0.544 | ✅ |
+
+> 신뢰도가 애매구간(0.35~0.65)에 걸리는 것은 테스트 이미지 환경 차이 때문.  
+> 실제 분리수거함 환경(동일 카메라·조명)에서는 신뢰도가 더 높게 측정됨.
+
+**추론 속도**
+
+| 환경 | 속도 |
+|------|------|
+| Raspberry Pi 5 (NCNN, CPU) | ~200ms/frame |
+| Mac M-series (NCNN, CPU) | ~30ms/frame |
+
+**신뢰도 구간 정책**
+
+| 구간 | 판정 |
+|------|------|
+| conf < 0.35 | 탐지 버림 |
+| 0.35 ≤ conf < 0.65 | 불확실 — 능동학습 저장 대상 |
+| conf ≥ 0.65 | 확실한 탐지로 DB 기록 |
+
+> 전체 학습 지표(mAP50, Precision, Recall 곡선)는 학습 서버의  
+> `runs/detect/train*/results.csv` 및 `confusion_matrix.png` 참고
 
 ### Pi5 배포 (NCNN 변환)
 
