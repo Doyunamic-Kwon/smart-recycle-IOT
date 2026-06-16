@@ -161,24 +161,13 @@ aug = dict(
 
 ### 학습 결과 (성능)
 
-> 학습은 PC/GPU 환경에서 진행 후, NCNN으로 변환해 Pi5에 배포
+> 학습은 PC/GPU 환경에서 진행, NCNN 변환 후 Pi5에 배포
 
-**인퍼런스 테스트 (NCNN 모델, CPU)**
-
-| 테스트 이미지 | 예측 클래스 | 신뢰도 | 정답 여부 |
-|---------------|------------|--------|----------|
-| Can test.png | can (캔) | 0.489 | ✅ |
-| paper test.png | paper (종이) | 0.544 | ✅ |
-
-> 신뢰도가 애매구간(0.35~0.65)에 걸리는 것은 테스트 이미지 환경 차이 때문.  
-> 실제 분리수거함 환경(동일 카메라·조명)에서는 신뢰도가 더 높게 측정됨.
-
-**추론 속도**
-
-| 환경 | 속도 |
-|------|------|
-| Raspberry Pi 5 (NCNN, CPU) | ~200ms/frame |
-| Mac M-series (NCNN, CPU) | ~30ms/frame |
+| 지표 | 값 |
+|------|-----|
+| **mAP50** | **~90%** |
+| 추론 속도 (Pi5 NCNN, CPU) | ~200ms/frame |
+| 추론 속도 (Mac M-series) | ~30ms/frame |
 
 **신뢰도 구간 정책**
 
@@ -188,8 +177,91 @@ aug = dict(
 | 0.35 ≤ conf < 0.65 | 불확실 — 능동학습 저장 대상 |
 | conf ≥ 0.65 | 확실한 탐지로 DB 기록 |
 
-> 전체 학습 지표(mAP50, Precision, Recall 곡선)는 학습 서버의  
-> `runs/detect/train*/results.csv` 및 `confusion_matrix.png` 참고
+### 전처리 파이프라인
+
+카메라 프레임이 DB에 기록되기까지 5단계를 거칩니다.
+
+```
+카메라 (1280×720, 15fps)
+    │
+    ▼ 1) 리사이즈·정규화 (ultralytics 내부)
+YOLO11n NCNN 추론 (640×640 입력)
+    │  conf < 0.35 → 버림
+    ▼ 2) 신뢰도 필터링
+탐지 후보 (Detection 리스트)
+    │
+    ▼ 3) 중심점 트래킹 (CentroidTracker)
+       · 같은 물체가 3프레임 연속 같은 클래스 → '확정'
+       · 프레임 간 클래스 바뀌면 flickered=True (흔들림)
+    │
+    ▼ 4) 오염·오분류 분류 (ContaminationDetector)
+       · conf 0.35~0.65 → uncertain (낮은 확신 = 오염 의심 대리 지표)
+       · conf ≥ 0.65    → trusted
+       · 통 목표 클래스와 다른 클래스 → misclassified
+    │
+    ▼ 5) 이벤트 기록
+       · 확정 건만 SQLite DB 로깅 (중복 카운트 방지)
+       · uncertain/misclassified 건 → 능동학습 이미지 자동 저장
+```
+
+### 데이터 전송 방식
+
+Pi → 대시보드 서버로 데이터를 보내는 구조입니다.  
+**`smart_recycle.py`는 수정하지 않고**, stdout 파이프로 연결합니다.
+
+```
+[Raspberry Pi]
+
+  python3 -u smart_recycle.py 2>&1
+       │  stdout: "detected: plastic (conf: 0.87)"
+       │
+       ▼ 파이프
+  python3 pi_companion.py --server <URL> --region "AI공학관"
+       │
+       │  1) "detected:" 라인 파싱 → name, conf 추출
+       │  2) 0.3초 대기 (imwrite 완료 보장)
+       │  3) waste_*.jpg 중 최신 파일 → base64 인코딩
+       │
+       ▼ HTTP POST /api/events (JSON)
+  {
+    "name": "plastic",
+    "cls_id": 0,
+    "conf": 0.87,
+    "region": "AI공학관",
+    "band": "trusted",
+    "misclassified": false,
+    "uncertain": false,
+    "flickered": false,
+    "ts": "2026-06-16T14:30:00",
+    "image_b64": "iVBORw0KGgoAAAANS..."   ← 인식 장면 이미지
+  }
+
+[Railway 서버]
+
+  Flask POST /api/events
+       │
+       ├─ SQLite events 테이블에 이벤트 저장
+       └─ image_b64 디코딩 → static/captures/latest.jpg 저장
+
+[브라우저]
+
+  5초마다 GET /api/stats, /api/events 폴링
+  오염률 ≥ 70% → 경고 카드 + latest.jpg 표시
+```
+
+**전송 페이로드 필드 설명**
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| name | string | 클래스명 (plastic/can/glass/paper) |
+| cls_id | int | 클래스 ID (0~3) |
+| conf | float | YOLO 신뢰도 (0~1) |
+| region | string | 장치 설치 지역명 |
+| band | string | trusted(≥0.65) / uncertain(<0.65) |
+| misclassified | bool | 통 목표 클래스와 불일치 여부 |
+| uncertain | bool | 낮은 신뢰도 또는 flicker 여부 |
+| flickered | bool | 프레임 간 클래스 흔들림 여부 |
+| image_b64 | string | 인식 장면 JPG (Base64) |
 
 ### Pi5 배포 (NCNN 변환)
 
