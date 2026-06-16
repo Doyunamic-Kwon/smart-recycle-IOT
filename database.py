@@ -123,7 +123,7 @@ class EventDB:
             ).fetchall()
             hourly = {r["hour"]: r["cnt"] for r in hourly_rows}
 
-            contam_row = c.execute(
+                contam_row = c.execute(
                 f"""SELECT
                     SUM(misclassified) AS mis,
                     SUM(uncertain)     AS unc,
@@ -134,6 +134,49 @@ class EventDB:
             mis = int(contam_row["mis"] or 0)
             unc = int(contam_row["unc"] or 0)
             contam_count = int(contam_row["contam_count"] or 0)
+
+            # --- Rolling window (최근 50건) ---
+            rolling_rows = c.execute(
+                f"""SELECT misclassified, uncertain, conf FROM events {where}
+                    ORDER BY ts_epoch DESC LIMIT 50""",
+                args,
+            ).fetchall()
+            rolling_n = len(rolling_rows)
+            rolling_contam = sum(1 for r in rolling_rows if r["misclassified"] or r["uncertain"])
+            rolling_conf = sum(r["conf"] for r in rolling_rows) / rolling_n if rolling_n else 0.0
+
+            # --- Anomaly: 이벤트 급증 (현재 시간 vs 최근 7일 시간당 평균) ---
+            hour_start = datetime.now().replace(minute=0, second=0, microsecond=0).timestamp()
+            cur_count = c.execute(
+                f"""SELECT COUNT(*) AS n FROM events {where}
+                    {'AND' if where else 'WHERE'} ts_epoch >= ?""",
+                args + (hour_start,),
+            ).fetchone()["n"]
+
+            avg_row = c.execute(
+                f"""SELECT AVG(cnt) AS avg FROM (
+                        SELECT COUNT(*) AS cnt FROM events {where}
+                        {'AND' if where else 'WHERE'} ts_epoch >= ? AND ts_epoch < ?
+                        GROUP BY CAST(strftime('%Y%m%d%H', ts) AS TEXT)
+                    )""",
+                args + (week_start, hour_start),
+            ).fetchone()
+            avg_hourly = float(avg_row["avg"] or 0)
+            spike = bool(avg_hourly > 0 and cur_count >= 2 * avg_hourly)
+
+            # --- Anomaly: 신뢰도 하락 (최근 20건 vs 전체 평균) ---
+            recent_conf_rows = c.execute(
+                f"SELECT conf FROM events {where} ORDER BY ts_epoch DESC LIMIT 20",
+                args,
+            ).fetchall()
+            overall_conf = c.execute(
+                f"SELECT AVG(conf) AS avg FROM events {where}", args
+            ).fetchone()["avg"] or 0.0
+            recent_conf = (
+                sum(r["conf"] for r in recent_conf_rows) / len(recent_conf_rows)
+                if recent_conf_rows else 0.0
+            )
+            conf_drop = bool(len(recent_conf_rows) >= 10 and (overall_conf - recent_conf) > 0.1)
 
             regions_rows = c.execute(
                 "SELECT DISTINCT region FROM events WHERE region IS NOT NULL ORDER BY region"
@@ -150,6 +193,19 @@ class EventDB:
             "uncertain": unc,
             "contamination_rate": contam_rate,
             "accuracy": accuracy,
+            "rolling": {
+                "total": rolling_n,
+                "contamination_rate": round(rolling_contam / rolling_n, 4) if rolling_n else 0.0,
+                "avg_conf": round(rolling_conf, 4),
+            },
+            "anomalies": {
+                "spike": spike,
+                "spike_current": cur_count,
+                "spike_avg": round(avg_hourly, 1),
+                "conf_drop": conf_drop,
+                "conf_recent": round(recent_conf, 4),
+                "conf_overall": round(overall_conf, 4),
+            },
             "by_class": {k: by_class.get(k, 0) for k in ALL_CLASSES},
             "by_class_ko": {NAMES_KO.get(k, k): by_class.get(k, 0) for k in ALL_CLASSES},
             "last": dict(recent) if recent else None,

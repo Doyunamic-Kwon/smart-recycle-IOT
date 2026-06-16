@@ -201,6 +201,16 @@
       <div class="sub" id="kpi-contam-sub"></div>
     </div>
     <div class="kpi">
+      <label>최근 50건 오염률</label>
+      <div class="value" id="kpi-rolling" style="color:#a78bfa">—</div>
+      <div class="sub" id="kpi-rolling-sub"></div>
+    </div>
+    <div class="kpi">
+      <label>최근 평균 신뢰도</label>
+      <div class="value" id="kpi-conf" style="color:#38bdf8">—</div>
+      <div class="sub" id="kpi-conf-sub"></div>
+    </div>
+    <div class="kpi">
       <label>가장 많은 재질</label>
       <div class="value" id="kpi-top" style="font-size:1.4rem">—</div>
       <div class="sub" id="kpi-top-count"></div>
@@ -209,6 +219,16 @@
       <label>마지막 인식</label>
       <div class="value" id="kpi-last" style="font-size:1.1rem">—</div>
       <div class="sub" id="kpi-last-time"></div>
+    </div>
+  </div>
+
+  <!-- 이상 감지 알림 -->
+  <div id="anomaly-section" style="display:none; margin-bottom:1rem;">
+    <div class="card" style="border-color:#f97316;">
+      <h2 style="color:#f97316; text-transform:none; letter-spacing:0; font-size:0.9rem; margin-bottom:0.75rem;">
+        🔍 이상 감지
+      </h2>
+      <div id="anomaly-list" style="display:flex; flex-direction:column; gap:0.5rem;"></div>
     </div>
   </div>
 
@@ -340,6 +360,18 @@ function updateKPIs(stats) {
   document.getElementById('kpi-contam-sub').textContent =
     `오분류 ${stats.misclassified ?? 0} + 불확실 ${stats.uncertain ?? 0}건`;
 
+  // Rolling window
+  const rolling = stats.rolling ?? {};
+  const rollingRate = rolling.contamination_rate ?? 0;
+  document.getElementById('kpi-rolling').textContent = (rollingRate * 100).toFixed(1) + '%';
+  document.getElementById('kpi-rolling-sub').textContent = `최근 ${rolling.total ?? 0}건 기준`;
+
+  const rollingConf = rolling.avg_conf ?? 0;
+  document.getElementById('kpi-conf').textContent = (rollingConf * 100).toFixed(1) + '%';
+  document.getElementById('kpi-conf-sub').textContent = '최근 20건 평균';
+
+  // Anomaly detection
+  updateAnomalySection(stats.anomalies ?? {});
   updateContamAlert(contam);
 
   if (stats.last) {
@@ -430,6 +462,39 @@ function updateEventsTable(events) {
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
+}
+
+function updateAnomalySection(anomalies) {
+  const section = document.getElementById('anomaly-section');
+  const list = document.getElementById('anomaly-list');
+  const items = [];
+
+  if (anomalies.spike) {
+    items.push(`
+      <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.83rem;">
+        <span style="color:#f97316;font-size:1rem;">⚡</span>
+        <span><b>이벤트 급증</b> — 현재 시간 <b>${anomalies.spike_current}건</b>
+        (평소 시간당 평균 ${anomalies.spike_avg}건의 2배 이상)</span>
+      </div>`);
+  }
+
+  if (anomalies.conf_drop) {
+    const drop = ((anomalies.conf_overall - anomalies.conf_recent) * 100).toFixed(1);
+    items.push(`
+      <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.83rem;">
+        <span style="color:#f97316;font-size:1rem;">📉</span>
+        <span><b>신뢰도 하락</b> — 최근 평균 <b>${(anomalies.conf_recent*100).toFixed(1)}%</b>
+        (전체 평균 ${(anomalies.conf_overall*100).toFixed(1)}% 대비 ${drop}%p 하락)
+        — 카메라 오염 또는 모델 드리프트 의심</span>
+      </div>`);
+  }
+
+  if (items.length > 0) {
+    list.innerHTML = items.join('');
+    section.style.display = 'block';
+  } else {
+    section.style.display = 'none';
+  }
 }
 
 function updateContamAlert(contam) {
