@@ -308,19 +308,84 @@ HTML/JS 대시보드 (Chart.js)
 
 ### 주요 화면
 
-- **KPI 카드**: 오늘 인식 건수 / 전체 누적 / 최다 재질 / 마지막 인식
-- **재질별 분포**: 4종 가로 바 차트
+**KPI 카드 (6종)**
+
+| 카드 | 설명 |
+|------|------|
+| 오늘 인식 | 당일 누적 이벤트 수 |
+| 전체 누적 | DB 전체 이벤트 수 |
+| 정분류율 | 오분류 건 제외한 정확도 |
+| 오염·오분류율 | misclassified OR uncertain 비율 |
+| 최근 50건 오염률 | 전체 누적이 아닌 최근 N건 기준 실시간 오염 추이 |
+| 최근 평균 신뢰도 | 최근 20건 conf 평균 — 카메라·모델 상태 모니터링 |
+
+**차트 & 테이블**
+- **재질별 분포**: plastic / can / glass / paper 가로 바 차트
 - **시간대별 패턴**: 0~23시 배출량 막대 그래프 (최근 7일)
 - **최근 이벤트 테이블**: 시각 / 지역 / 재질 / 신뢰도 / 판정
+
+**이상 감지 알림 (Anomaly Detection)**
+
+| 감지 항목 | 조건 | 의미 |
+|-----------|------|------|
+| 이벤트 급증 | 현재 시간 이벤트 수 ≥ 최근 7일 시간당 평균 × 2 | 비정상적으로 많은 투입 발생 |
+| 신뢰도 하락 | 최근 20건 평균 conf가 전체 평균 대비 10%p↓ | 카메라 오염 또는 모델 드리프트 의심 |
+
+이상 감지 조건 충족 시 대시보드 상단에 주황색 경고 카드 자동 표시.
+
+**오염 경고**
+- 오염·오분류율 ≥ 70% 시 빨간 경고 카드 + 마지막 인식 장면 이미지 표시
+
+### Data Aggregation 구조
+
+```
+[전체 누적 집계]
+  total, misclassified, uncertain → contamination_rate, accuracy
+
+[Rolling Window (최근 50건)]
+  최근 N건만 슬라이딩 → rolling_contamination_rate, rolling_avg_conf
+  전체 누적과 비교해 현재 추이 파악 가능
+
+[시간대별 집계]
+  GROUP BY hour → 0~23시 배출 패턴 (최근 7일)
+
+[이상 감지용 집계]
+  현재 시간 count vs AVG(count per hour, 최근 7일) → 급증 여부
+  AVG(conf, 최근 20건) vs AVG(conf, 전체) → 신뢰도 하락 여부
+```
 
 ### API 명세
 
 | Method | Endpoint | 설명 |
 |--------|----------|------|
-| `POST` | `/api/events` | Pi에서 인식 결과 수신 |
+| `POST` | `/api/events` | Pi에서 인식 결과 + 이미지 수신 |
 | `GET` | `/api/events?limit=50&region=AI공학관` | 최근 이벤트 목록 |
-| `GET` | `/api/stats?region=AI공학관` | 통계 (KPI, 분포, 시간대) |
+| `GET` | `/api/stats?region=AI공학관` | KPI·Rolling·Anomaly 통계 전체 |
 | `GET` | `/api/health` | 헬스체크 |
+
+**GET /api/stats 응답 구조**
+```json
+{
+  "total": 120,
+  "today": 30,
+  "contamination_rate": 0.25,
+  "accuracy": 0.85,
+  "rolling": {
+    "total": 50,
+    "contamination_rate": 0.32,
+    "avg_conf": 0.71
+  },
+  "anomalies": {
+    "spike": false,
+    "spike_current": 4,
+    "spike_avg": 3.2,
+    "conf_drop": false,
+    "conf_recent": 0.68,
+    "conf_overall": 0.72
+  },
+  "by_class": { "plastic": 60, "can": 30, "glass": 15, "paper": 15 },
+  "hourly": [0, 0, 0, ..., 12, 18, 0]
+}
 
 **POST /api/events 요청 예시:**
 ```json
