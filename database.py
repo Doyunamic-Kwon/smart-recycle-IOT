@@ -123,14 +123,31 @@ class EventDB:
             ).fetchall()
             hourly = {r["hour"]: r["cnt"] for r in hourly_rows}
 
+            contam_row = c.execute(
+                f"""SELECT
+                    SUM(misclassified) AS mis,
+                    SUM(uncertain)     AS unc
+                    FROM events {where}""",
+                args,
+            ).fetchone()
+            mis = int(contam_row["mis"] or 0)
+            unc = int(contam_row["unc"] or 0)
+
             regions_rows = c.execute(
                 "SELECT DISTINCT region FROM events WHERE region IS NOT NULL ORDER BY region"
             ).fetchall()
             regions = [r["region"] for r in regions_rows]
 
+        contam_rate = round((mis + unc) / total, 4) if total else 0.0
+        accuracy = round(1 - mis / total, 4) if total else 0.0
+
         return {
             "total": total,
             "today": today,
+            "misclassified": mis,
+            "uncertain": unc,
+            "contamination_rate": contam_rate,
+            "accuracy": accuracy,
             "by_class": {k: by_class.get(k, 0) for k in ALL_CLASSES},
             "by_class_ko": {NAMES_KO.get(k, k): by_class.get(k, 0) for k in ALL_CLASSES},
             "last": dict(recent) if recent else None,

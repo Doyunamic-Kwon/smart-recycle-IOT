@@ -191,6 +191,16 @@
       <div class="sub">건</div>
     </div>
     <div class="kpi">
+      <label>정분류율</label>
+      <div class="value" id="kpi-accuracy" style="color:#22c55e">—</div>
+      <div class="sub" id="kpi-accuracy-sub"></div>
+    </div>
+    <div class="kpi">
+      <label>오염·오분류율</label>
+      <div class="value" id="kpi-contam" style="color:#f59e0b">—</div>
+      <div class="sub" id="kpi-contam-sub"></div>
+    </div>
+    <div class="kpi">
       <label>가장 많은 재질</label>
       <div class="value" id="kpi-top" style="font-size:1.4rem">—</div>
       <div class="sub" id="kpi-top-count"></div>
@@ -295,6 +305,15 @@ function updateKPIs(stats) {
     (stats.by_class[a] || 0) >= (stats.by_class[b] || 0) ? a : b, ALL_CATS[0]);
   document.getElementById('kpi-top').textContent = KO[top] || top;
   document.getElementById('kpi-top-count').textContent = (stats.by_class[top] || 0) + '건';
+
+  const acc = stats.accuracy ?? 0;
+  const contam = stats.contamination_rate ?? 0;
+  document.getElementById('kpi-accuracy').textContent = (acc * 100).toFixed(1) + '%';
+  document.getElementById('kpi-accuracy-sub').textContent =
+    `오분류 ${stats.misclassified ?? 0}건 제외`;
+  document.getElementById('kpi-contam').textContent = (contam * 100).toFixed(1) + '%';
+  document.getElementById('kpi-contam-sub').textContent =
+    `오분류 ${stats.misclassified ?? 0} + 불확실 ${stats.uncertain ?? 0}건`;
 
   if (stats.last) {
     document.getElementById('kpi-last').textContent = KO[stats.last.name] || stats.last.name;
