@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>♻ Smart Recycle Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3250;
+      --text: #e2e8f0;
+      --muted: #8892b0;
+      --plastic: #22c55e;
+      --can: #ef4444;
+      --glass: #3b82f6;
+      --paper: #f59e0b;
+      --accent: #6366f1;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; }
+    header h1 span { color: var(--accent); }
+
+    #status-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    #dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    #region-filter {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.3rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    main { padding: 1.5rem 2rem; max-width: 1400px; margin: 0 auto; }
+
+    /* KPI */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .kpi {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+    }
+    .kpi label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .kpi .value { font-size: 2rem; font-weight: 700; line-height: 1.2; margin-top: 0.25rem; }
+    .kpi .sub { font-size: 0.75rem; color: var(--muted); margin-top: 0.25rem; }
+
+    /* Charts row */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    @media (max-width: 900px) { .charts-grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+    }
+    .card h2 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 1rem;
+    }
+    .chart-wrap { position: relative; height: 220px; }
+
+    /* Category badges */
+    .cat-bars { display: flex; flex-direction: column; gap: 0.75rem; }
+    .cat-row { display: flex; align-items: center; gap: 0.75rem; }
+    .cat-name { width: 60px; font-size: 0.82rem; }
+    .cat-bar-bg { flex: 1; background: var(--surface2); border-radius: 4px; height: 8px; overflow: hidden; }
+    .cat-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+    .cat-count { width: 40px; text-align: right; font-size: 0.82rem; color: var(--muted); }
+
+    /* Events table */
+    .events-card { margin-bottom: 1.5rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    th {
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+    }
+    td { padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--surface2); }
+
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.6rem;
+      border-radius: 99px;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+    .badge-plastic { background: rgba(34,197,94,0.15); color: var(--plastic); }
+    .badge-can     { background: rgba(239,68,68,0.15);  color: var(--can); }
+    .badge-glass   { background: rgba(59,130,246,0.15); color: var(--glass); }
+    .badge-paper   { background: rgba(245,158,11,0.15); color: var(--paper); }
+
+    .conf-bar {
+      display: flex; align-items: center; gap: 6px;
+    }
+    .conf-track {
+      width: 60px; height: 5px; background: var(--surface2);
+      border-radius: 99px; overflow: hidden;
+    }
+    .conf-fill {
+      height: 100%; background: var(--accent); border-radius: 99px;
+    }
+
+    #last-updated { font-size: 0.72rem; color: var(--muted); text-align: right; margin-top: 0.5rem; }
+
+    .empty { color: var(--muted); font-size: 0.85rem; text-align: center; padding: 2rem 0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>♻ Smart <span>Recycle</span> Dashboard</h1>
+  <div style="display:flex;align-items:center;gap:1rem;">
+    <select id="region-filter" onchange="onRegionChange()">
+      <option value="">전체 지역</option>
+    </select>
+    <div id="pi-status-bar" style="display:flex;gap:0.5rem;align-items:center;font-size:0.78rem;color:var(--muted);"></div>
+    <div id="status-bar">
+      <div id="dot"></div>
+      <span id="status-text">연결 중...</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- KPI -->
+  <div class="kpi-grid">
+    <div class="kpi">
+      <label>오늘 인식</label>
+      <div class="value" id="kpi-today">—</div>
+      <div class="sub">건</div>
+    </div>
+    <div class="kpi">
+      <label>전체 누적</label>
+      <div class="value" id="kpi-total">—</div>
+      <div class="sub">건</div>
+    </div>
+    <div class="kpi">
+      <label>정분류율</label>
+      <div class="value" id="kpi-accuracy" style="color:#22c55e">—</div>
+      <div class="sub" id="kpi-accuracy-sub"></div>
+    </div>
+    <div class="kpi">
+      <label>오염·오분류율</label>
+      <div class="value" id="kpi-contam" style="color:#f59e0b">—</div>
+      <div class="sub" id="kpi-contam-sub"></div>
+    </div>
+    <div class="kpi">
+      <label>최근 50건 오염률</label>
+      <div class="value" id="kpi-rolling" style="color:#a78bfa">—</div>
+      <div class="sub" id="kpi-rolling-sub"></div>
+    </div>
+    <div class="kpi">
+      <label>최근 평균 신뢰도</label>
+      <div class="value" id="kpi-conf" style="color:#38bdf8">—</div>
+      <div class="sub" id="kpi-conf-sub"></div>
+    </div>
+    <div class="kpi">
+      <label>가장 많은 재질</label>
+      <div class="value" id="kpi-top" style="font-size:1.4rem">—</div>
+      <div class="sub" id="kpi-top-count"></div>
+    </div>
+    <div class="kpi">
+      <label>마지막 인식</label>
+      <div class="value" id="kpi-last" style="font-size:1.1rem">—</div>
+      <div class="sub" id="kpi-last-time"></div>
+    </div>
+  </div>
+
+  <!-- 이상 감지 알림 -->
+  <div id="anomaly-section" style="display:none; margin-bottom:1rem;">
+    <div class="card" style="border-color:#f97316;">
+      <h2 style="color:#f97316; text-transform:none; letter-spacing:0; font-size:0.9rem; margin-bottom:0.75rem;">
+        🔍 이상 감지
+      </h2>
+      <div id="anomaly-list" style="display:flex; flex-direction:column; gap:0.5rem;"></div>
+    </div>
+  </div>
+
+  <!-- 오염 경고 -->
+  <div id="contam-alert" style="display:none; margin-bottom:1rem;">
+    <div class="card" style="border-color:#ef4444;">
+      <div style="display:flex; align-items:flex-start; gap:1.25rem; flex-wrap:wrap;">
+        <div style="flex:1; min-width:200px;">
+          <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem;">
+            <span style="font-size:1.25rem;">⚠️</span>
+            <h2 style="color:#ef4444; font-size:0.95rem; font-weight:700; text-transform:none; letter-spacing:0;">
+              오염률 경고 — 오분류/오염 비율이 70%를 초과했습니다
+            </h2>
+          </div>
+          <p style="font-size:0.82rem; color:var(--muted); line-height:1.6;">
+            잘못된 쓰레기가 다량 투입되고 있습니다.<br>
+            수거함 상태를 확인하거나 분류 안내를 강화하세요.
+          </p>
+        </div>
+        <div id="contam-img-wrap" style="display:none; flex-shrink:0;">
+          <p style="font-size:0.72rem; color:var(--muted); margin-bottom:0.4rem;">마지막 인식 장면</p>
+          <img id="contam-img" src="" alt="마지막 인식 장면"
+            style="width:240px; height:160px; object-fit:cover; border-radius:8px; border:1px solid #ef4444;" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-grid">
+    <!-- Category distribution -->
+    <div class="card">
+      <h2>재질별 분포</h2>
+      <div class="cat-bars" id="cat-bars"></div>
+    </div>
+
+    <!-- Hourly pattern -->
+    <div class="card">
+      <h2>시간대별 배출 패턴 (최근 7일)</h2>
+      <div class="chart-wrap">
+        <canvas id="hourly-chart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent events -->
+  <div class="card events-card">
+    <h2>최근 인식 이벤트</h2>
+    <div id="events-container">
+      <p class="empty">데이터 불러오는 중...</p>
+    </div>
+  </div>
+
+  <div id="last-updated"></div>
+</main>
+
+<script>
+const KO = { plastic: '플라스틱', can: '캔', glass: '유리', paper: '종이' };
+const CAT_COLOR = { plastic: '#22c55e', can: '#ef4444', glass: '#3b82f6', paper: '#f59e0b' };
+const ALL_CATS = ['plastic', 'can', 'glass', 'paper'];
+
+let hourlyChart = null;
+let selectedRegion = '';
+
+function onRegionChange() {
+  selectedRegion = document.getElementById('region-filter').value;
+  refresh();
+}
+
+async function fetchJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(r.statusText);
+  return r.json();
+}
+
+async function refreshPiStatus() {
+  try {
+    const hb = await fetchJSON('/api/heartbeat');
+    const bar = document.getElementById('pi-status-bar');
+    const entries = Object.entries(hb);
+    if (!entries.length) { bar.innerHTML = ''; return; }
+    bar.innerHTML = entries.map(([region, s]) => `
+      <span style="display:flex;align-items:center;gap:4px;">
+        <span style="width:7px;height:7px;border-radius:50%;background:${s.online ? '#22c55e' : '#ef4444'};display:inline-block;"></span>
+        <span>${region} ${s.online ? `(${s.seconds_ago}s 전)` : '오프라인'}</span>
+      </span>`).join('<span style="color:var(--border);">|</span>');
+  } catch (_) {}
+}
+
+async function refresh() {
+  try {
+    const regionQ = selectedRegion ? `?region=${encodeURIComponent(selectedRegion)}` : '';
+    const [stats, events] = await Promise.all([
+      fetchJSON('/api/stats' + regionQ),
+      fetchJSON('/api/events?limit=30' + (selectedRegion ? `&region=${encodeURIComponent(selectedRegion)}` : '')),
+    ]);
+
+    updateRegions(stats.regions);
+    updateKPIs(stats);
+    updateCatBars(stats.by_class, stats.total);
+    updateHourlyChart(stats.hourly);
+    updateEventsTable(events);
+
+    document.getElementById('status-text').textContent = '연결됨';
+    document.getElementById('dot').style.background = '#22c55e';
+    document.getElementById('last-updated').textContent =
+      '마지막 갱신: ' + new Date().toLocaleTimeString('ko-KR');
+  } catch (e) {
+    document.getElementById('status-text').textContent = '서버 오프라인';
+    document.getElementById('dot').style.background = '#ef4444';
+  }
+}
+
+function updateRegions(regions) {
+  const sel = document.getElementById('region-filter');
+  const current = sel.value;
+  const existing = Array.from(sel.options).map(o => o.value).filter(v => v);
+  for (const r of regions) {
+    if (!existing.includes(r)) {
+      const opt = document.createElement('option');
+      opt.value = r; opt.textContent = r;
+      sel.appendChild(opt);
+    }
+  }
+  if (current) sel.value = current;
+}
+
+function updateKPIs(stats) {
+  document.getElementById('kpi-today').textContent = stats.today.toLocaleString();
+  document.getElementById('kpi-total').textContent = stats.total.toLocaleString();
+
+  const top = ALL_CATS.reduce((a, b) =>
+    (stats.by_class[a] || 0) >= (stats.by_class[b] || 0) ? a : b, ALL_CATS[0]);
+  document.getElementById('kpi-top').textContent = KO[top] || top;
+  document.getElementById('kpi-top-count').textContent = (stats.by_class[top] || 0) + '건';
+
+  const acc = stats.accuracy ?? 0;
+  const contam = stats.contamination_rate ?? 0;
+  document.getElementById('kpi-accuracy').textContent = (acc * 100).toFixed(1) + '%';
+  document.getElementById('kpi-accuracy-sub').textContent =
+    `오분류 ${stats.misclassified ?? 0}건 제외`;
+  document.getElementById('kpi-contam').textContent = (contam * 100).toFixed(1) + '%';
+  document.getElementById('kpi-contam-sub').textContent =
+    `오분류 ${stats.misclassified ?? 0} + 불확실 ${stats.uncertain ?? 0}건`;
+
+  // Rolling window
+  const rolling = stats.rolling ?? {};
+  const rollingRate = rolling.contamination_rate ?? 0;
+  document.getElementById('kpi-rolling').textContent = (rollingRate * 100).toFixed(1) + '%';
+  document.getElementById('kpi-rolling-sub').textContent = `최근 ${rolling.total ?? 0}건 기준`;
+
+  const rollingConf = rolling.avg_conf ?? 0;
+  document.getElementById('kpi-conf').textContent = (rollingConf * 100).toFixed(1) + '%';
+  document.getElementById('kpi-conf-sub').textContent = '최근 20건 평균';
+
+  // Anomaly detection
+  updateAnomalySection(stats.anomalies ?? {});
+  updateContamAlert(contam);
+
+  if (stats.last) {
+    document.getElementById('kpi-last').textContent = KO[stats.last.name] || stats.last.name;
+    const t = new Date(stats.last.ts);
+    document.getElementById('kpi-last-time').textContent = t.toLocaleTimeString('ko-KR');
+  } else {
+    document.getElementById('kpi-last').textContent = '—';
+    document.getElementById('kpi-last-time').textContent = '';
+  }
+}
+
+function updateCatBars(byClass, total) {
+  const el = document.getElementById('cat-bars');
+  el.innerHTML = '';
+  for (const cat of ALL_CATS) {
+    const cnt = byClass[cat] || 0;
+    const pct = total ? Math.round(cnt / total * 100) : 0;
+    el.innerHTML += `
+      <div class="cat-row">
+        <span class="cat-name">${KO[cat]}</span>
+        <div class="cat-bar-bg">
+          <div class="cat-bar-fill" style="width:${pct}%;background:${CAT_COLOR[cat]}"></div>
+        </div>
+        <span class="cat-count">${cnt}</span>
+      </div>`;
+  }
+}
+
+function updateHourlyChart(hourly) {
+  const labels = Array.from({length: 24}, (_, i) => i + '시');
+  const ctx = document.getElementById('hourly-chart').getContext('2d');
+  if (hourlyChart) {
+    hourlyChart.data.datasets[0].data = hourly;
+    hourlyChart.update('none');
+    return;
+  }
+  hourlyChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        data: hourly,
+        backgroundColor: 'rgba(99,102,241,0.6)',
+        borderColor: '#6366f1',
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#8892b0', font: { size: 10 } }, grid: { color: '#2e3250' } },
+        y: { ticks: { color: '#8892b0', font: { size: 10 } }, grid: { color: '#2e3250' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+function updateEventsTable(events) {
+  const el = document.getElementById('events-container');
+  if (!events.length) {
+    el.innerHTML = '<p class="empty">아직 인식된 항목이 없습니다.</p>';
+    return;
+  }
+  const rows = events.map(e => {
+    const t = new Date(e.ts).toLocaleString('ko-KR');
+    const conf = Math.round(e.conf * 100);
+    return `<tr>
+      <td>${t}</td>
+      <td>${e.region || '—'}</td>
+      <td><span class="badge badge-${e.name}">${KO[e.name] || e.name}</span></td>
+      <td>
+        <div class="conf-bar">
+          <div class="conf-track"><div class="conf-fill" style="width:${conf}%"></div></div>
+          <span>${conf}%</span>
+        </div>
+      </td>
+      <td style="color:${e.band === 'trusted' ? '#22c55e' : '#f59e0b'}">${e.band === 'trusted' ? '확실' : '불확실'}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `<table>
+    <thead><tr>
+      <th>시각</th><th>지역</th><th>재질</th><th>신뢰도</th><th>판정</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function updateAnomalySection(anomalies) {
+  const section = document.getElementById('anomaly-section');
+  const list = document.getElementById('anomaly-list');
+  const items = [];
+
+  if (anomalies.spike) {
+    items.push(`
+      <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.83rem;">
+        <span style="color:#f97316;font-size:1rem;">⚡</span>
+        <span><b>이벤트 급증</b> — 현재 시간 <b>${anomalies.spike_current}건</b>
+        (평소 시간당 평균 ${anomalies.spike_avg}건의 2배 이상)</span>
+      </div>`);
+  }
+
+  if (anomalies.conf_drop) {
+    const drop = ((anomalies.conf_overall - anomalies.conf_recent) * 100).toFixed(1);
+    items.push(`
+      <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.83rem;">
+        <span style="color:#f97316;font-size:1rem;">📉</span>
+        <span><b>신뢰도 하락</b> — 최근 평균 <b>${(anomalies.conf_recent*100).toFixed(1)}%</b>
+        (전체 평균 ${(anomalies.conf_overall*100).toFixed(1)}% 대비 ${drop}%p 하락)
+        — 카메라 오염 또는 모델 드리프트 의심</span>
+      </div>`);
+  }
+
+  if (items.length > 0) {
+    list.innerHTML = items.join('');
+    section.style.display = 'block';
+  } else {
+    section.style.display = 'none';
+  }
+}
+
+function updateContamAlert(contam) {
+  const alert = document.getElementById('contam-alert');
+  if (contam >= 0.7) {
+    alert.style.display = 'block';
+    const imgWrap = document.getElementById('contam-img-wrap');
+    const img = document.getElementById('contam-img');
+    // 캐시 방지용 타임스탬프 쿼리 붙여서 항상 최신 이미지 로드
+    const src = `/static/captures/latest.jpg?t=${Date.now()}`;
+    fetch(src, { method: 'HEAD' })
+      .then(r => {
+        if (r.ok) {
+          img.src = src;
+          imgWrap.style.display = 'block';
+        } else {
+          imgWrap.style.display = 'none';
+        }
+      })
+      .catch(() => { imgWrap.style.display = 'none'; });
+  } else {
+    alert.style.display = 'none';
+  }
+}
+
+// 5초마다 자동 갱신
+refresh();
+refreshPiStatus();
+setInterval(refresh, 5000);
+setInterval(refreshPiStatus, 10000);
+</script>
+</body>
+</html>
