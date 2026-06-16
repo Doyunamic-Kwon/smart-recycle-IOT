@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+
+# 런타임 데이터
+data/events.db
+captured/
+
+# 학습 결과물 / 대용량 바이너리
+*.pt
+*.onnx
+
+# 테스트 영상
+data/*.mp4
+data/*.avi
+data/*.mov

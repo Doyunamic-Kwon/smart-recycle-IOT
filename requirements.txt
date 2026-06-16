@@ -1,0 +1,22 @@
+# --- 공통 (PC 학습 + Pi5 추론) ---
+ultralytics>=8.3.0      # YOLO11 학습/추론/NCNN export 를 모두 지원
+opencv-python>=4.8.0    # 카메라 캡처 / 오버레이
+numpy>=1.24
+pyyaml>=6.0
+
+# --- 데이터 분석 / 리포트 ---
+pandas>=2.0
+matplotlib>=3.7
+
+# --- 대시보드 ---
+streamlit>=1.30
+
+# --- 중앙 수집 서버 (지역별 데이터를 모으는 PC에만 필요) ---
+flask>=3.0
+gunicorn>=21.0
+
+# --- Pi5 배포용 (라즈베리 파이에서만 설치) ---
+# ncnn                  # NCNN 런타임 (ultralytics 가 자동 사용)
+# picamera2             # Pi 카메라 모듈 사용 시 (apt: python3-picamera2 권장)
+#
+# 참고: Pi5 에서는 opencv-python 대신 'opencv-python-headless' 가 가벼움.
