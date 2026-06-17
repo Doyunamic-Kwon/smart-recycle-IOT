@@ -160,6 +160,29 @@
     #last-updated { font-size: 0.72rem; color: var(--muted); text-align: right; margin-top: 0.5rem; }
 
     .empty { color: var(--muted); font-size: 0.85rem; text-align: center; padding: 2rem 0; }
+
+    /* 불확실 검토 패널 */
+    #review-panel {
+      display: none;
+      margin-bottom: 1rem;
+      border-color: #a78bfa;
+      animation: slideIn 0.3s ease;
+    }
+    @keyframes slideIn { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+    .review-label-btn {
+      padding: 0.5rem 1.1rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .review-label-btn:hover { background: #6366f1; border-color: #6366f1; color: #fff; }
+    .review-label-btn.skip { color: var(--muted); }
+    .review-label-btn.skip:hover { background: var(--surface); border-color: var(--muted); color: var(--text); }
   </style>
 </head>
 <body>
@@ -275,6 +298,33 @@
     </div>
   </div>
 
+  <!-- 불확실 인식 검토 패널 -->
+  <div id="review-panel" class="card">
+    <h2 style="color:#a78bfa; text-transform:none; letter-spacing:0; font-size:0.95rem; margin-bottom:1rem;">
+      🤔 불확실 인식 — 실제 재질을 선택해 주세요
+    </h2>
+    <div style="display:flex; gap:1.5rem; align-items:flex-start; flex-wrap:wrap;">
+      <img id="review-img" src="" alt="불확실 인식 사진"
+        style="width:240px; height:160px; object-fit:cover; border-radius:8px; border:1px solid #a78bfa; flex-shrink:0;" />
+      <div style="flex:1; min-width:200px;">
+        <p style="font-size:0.83rem; color:var(--muted); margin-bottom:0.35rem;">
+          지역: <span id="review-region" style="color:var(--text);"></span>
+        </p>
+        <p style="font-size:0.83rem; color:var(--muted); margin-bottom:1rem;">
+          모델 추정: <b id="review-guess" style="color:var(--text);"></b>
+          <span style="margin-left:0.4rem; color:#f59e0b;" id="review-conf"></span>
+        </p>
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+          <button class="review-label-btn" onclick="submitLabel('plastic')">플라스틱</button>
+          <button class="review-label-btn" onclick="submitLabel('can')">캔 / 고철류</button>
+          <button class="review-label-btn" onclick="submitLabel('glass')">병 (유리)</button>
+          <button class="review-label-btn" onclick="submitLabel('paper')">일반쓰레기</button>
+          <button class="review-label-btn skip" onclick="submitLabel(null)">무시</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Recent events -->
   <div class="card events-card">
     <h2>최근 인식 이벤트</h2>
@@ -287,7 +337,7 @@
 </main>
 
 <script>
-const KO = { plastic: '플라스틱', can: '캔', glass: '유리', paper: '종이' };
+const KO = { plastic: '플라스틱', can: '캔/고철류', glass: '병(유리)', paper: '일반쓰레기' };
 const CAT_COLOR = { plastic: '#22c55e', can: '#ef4444', glass: '#3b82f6', paper: '#f59e0b' };
 const ALL_CATS = ['plastic', 'can', 'glass', 'paper'];
 
@@ -535,11 +585,55 @@ function updateContamAlert(contam) {
   }
 }
 
+let _currentReviewId = null;
+
+async function refreshUncertain() {
+  try {
+    const data = await fetchJSON('/api/uncertain');
+    const panel = document.getElementById('review-panel');
+    if (!data || !data.id) {
+      panel.style.display = 'none';
+      _currentReviewId = null;
+      return;
+    }
+    // 이미 표시 중인 것과 같으면 패널 유지
+    if (data.id === _currentReviewId) return;
+
+    _currentReviewId = data.id;
+    const src = `/static/captures/uncertain_latest.jpg?t=${Date.now()}`;
+    const imgOk = await fetch(src, { method: 'HEAD' }).then(r => r.ok).catch(() => false);
+    if (!imgOk) return; // 사진 없으면 패널 안 띄움
+
+    document.getElementById('review-img').src = src;
+    document.getElementById('review-guess').textContent = KO[data.name] || data.name;
+    document.getElementById('review-conf').textContent = `(신뢰도 ${Math.round(data.conf * 100)}%)`;
+    document.getElementById('review-region').textContent = data.region || '—';
+    panel.style.display = 'block';
+  } catch (_) {}
+}
+
+async function submitLabel(label) {
+  if (!_currentReviewId) return;
+  const panel = document.getElementById('review-panel');
+  panel.style.display = 'none';
+  try {
+    await fetch('/api/label', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ review_id: _currentReviewId, label }),
+    });
+  } catch (_) {}
+  _currentReviewId = null;
+  refresh();
+}
+
 // 5초마다 자동 갱신
 refresh();
 refreshPiStatus();
+refreshUncertain();
 setInterval(refresh, 5000);
 setInterval(refreshPiStatus, 10000);
+setInterval(refreshUncertain, 3000);
 </script>
 </body>
 </html>

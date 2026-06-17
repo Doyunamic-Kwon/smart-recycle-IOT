@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import os
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -38,6 +39,10 @@ _heartbeats: dict[str, float] = {}
 CAPTURES_DIR = Path("static/captures")
 CAPTURES_DIR.mkdir(parents=True, exist_ok=True)
 LATEST_IMG = CAPTURES_DIR / "latest.jpg"
+UNCERTAIN_IMG = CAPTURES_DIR / "uncertain_latest.jpg"
+
+# 검토 대기 중인 uncertain 이벤트 (메모리, 재시작 시 초기화)
+_pending_review: dict | None = None
 
 REQUIRED = ["name", "cls_id", "conf"]
 
@@ -79,7 +84,18 @@ def post_event():
 
     if img_b64 := data.get("image_b64"):
         try:
-            LATEST_IMG.write_bytes(base64.b64decode(img_b64))
+            img_bytes = base64.b64decode(img_b64)
+            LATEST_IMG.write_bytes(img_bytes)
+            if bool(data.get("uncertain", band == "uncertain")):
+                global _pending_review
+                UNCERTAIN_IMG.write_bytes(img_bytes)
+                _pending_review = {
+                    "id": str(uuid.uuid4()),
+                    "name": str(data["name"]),
+                    "conf": conf,
+                    "region": str(data.get("region", "unknown")),
+                    "ts": (ts or datetime.now()).isoformat(timespec="seconds"),
+                }
         except Exception:
             pass
 
@@ -119,6 +135,36 @@ def get_heartbeat():
         for region, ts in _heartbeats.items()
     }
     return jsonify(status)
+
+
+@app.get("/api/uncertain")
+def get_uncertain():
+    return jsonify(_pending_review)
+
+
+@app.post("/api/label")
+def post_label():
+    global _pending_review
+    data = request.get_json(silent=True) or {}
+    review_id = data.get("review_id")
+    if _pending_review is None or _pending_review.get("id") != review_id:
+        return jsonify({"error": "no matching pending review"}), 400
+    corrected = data.get("label")
+    if corrected:
+        # 보정 라벨로 DB에 추가 기록
+        cls_map = {"plastic": 0, "can": 1, "glass": 2, "paper": 3}
+        db.log(
+            name=corrected,
+            cls_id=cls_map.get(corrected, -1),
+            conf=_pending_review["conf"],
+            region=_pending_review["region"],
+            band="trusted",
+            misclassified=corrected != _pending_review["name"],
+            uncertain=False,
+            flickered=False,
+        )
+    _pending_review = None
+    return jsonify({"status": "ok"})
 
 
 @app.get("/api/health")
