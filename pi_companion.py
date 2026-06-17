@@ -29,7 +29,7 @@ except ImportError:
 DETECT_RE = re.compile(r"detected:\s*(\w+)\s*\(conf:\s*([\d.]+)\)")
 
 CLASS_IDS = {"plastic": 0, "can": 1, "glass": 2, "paper": 3}
-TRUSTED_THRESHOLD = 0.65
+TRUSTED_THRESHOLD = 0.50
 DEDUP_COOLDOWN = 5.0      # 같은 클래스 재전송 차단 시간(초)
 HEARTBEAT_INTERVAL = 30   # 헬스비트 전송 주기(초)
 

@@ -596,18 +596,22 @@ async function refreshUncertain() {
       _currentReviewId = null;
       return;
     }
-    // 이미 표시 중인 것과 같으면 패널 유지
     if (data.id === _currentReviewId) return;
 
     _currentReviewId = data.id;
-    const src = `/static/captures/uncertain_latest.jpg?t=${Date.now()}`;
-    const imgOk = await fetch(src, { method: 'HEAD' }).then(r => r.ok).catch(() => false);
-    if (!imgOk) return; // 사진 없으면 패널 안 띄움
-
-    document.getElementById('review-img').src = src;
     document.getElementById('review-guess').textContent = KO[data.name] || data.name;
     document.getElementById('review-conf').textContent = `(신뢰도 ${Math.round(data.conf * 100)}%)`;
     document.getElementById('review-region').textContent = data.region || '—';
+
+    const imgEl = document.getElementById('review-img');
+    if (data.has_image) {
+      const src = `/static/captures/uncertain_latest.jpg?t=${Date.now()}`;
+      imgEl.src = src;
+      imgEl.style.display = 'block';
+    } else {
+      imgEl.style.display = 'none';
+    }
+
     panel.style.display = 'block';
   } catch (_) {}
 }

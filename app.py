@@ -68,7 +68,8 @@ def post_event():
             return jsonify({"error": "invalid ts (ISO8601 expected)"}), 400
 
     conf = float(data["conf"])
-    band = "trusted" if conf >= 0.65 else "uncertain"
+    band = "trusted" if conf >= 0.50 else "uncertain"
+    is_uncertain = bool(data.get("uncertain", band == "uncertain"))
 
     db.log(
         name=str(data["name"]),
@@ -77,25 +78,30 @@ def post_event():
         region=str(data.get("region", "unknown")),
         band=data.get("band", band),
         misclassified=bool(data.get("misclassified", False)),
-        uncertain=bool(data.get("uncertain", band == "uncertain")),
+        uncertain=is_uncertain,
         flickered=bool(data.get("flickered", False)),
         ts=ts,
     )
+
+    # uncertain 이벤트면 이미지 유무와 관계없이 검토 대기에 등록
+    if is_uncertain:
+        global _pending_review
+        _pending_review = {
+            "id": str(uuid.uuid4()),
+            "name": str(data["name"]),
+            "conf": conf,
+            "region": str(data.get("region", "unknown")),
+            "ts": (ts or datetime.now()).isoformat(timespec="seconds"),
+            "has_image": False,
+        }
 
     if img_b64 := data.get("image_b64"):
         try:
             img_bytes = base64.b64decode(img_b64)
             LATEST_IMG.write_bytes(img_bytes)
-            if bool(data.get("uncertain", band == "uncertain")):
-                global _pending_review
+            if is_uncertain and _pending_review:
                 UNCERTAIN_IMG.write_bytes(img_bytes)
-                _pending_review = {
-                    "id": str(uuid.uuid4()),
-                    "name": str(data["name"]),
-                    "conf": conf,
-                    "region": str(data.get("region", "unknown")),
-                    "ts": (ts or datetime.now()).isoformat(timespec="seconds"),
-                }
+                _pending_review["has_image"] = True
         except Exception:
             pass
 
